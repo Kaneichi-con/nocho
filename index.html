@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f5fd6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="野帳入力">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>野帳入力</title>
+<style>
+  :root {
+    --bg: #f2f4f8; --card: #fff; --ink: #1d2433; --sub: #667085; --line: #d9dee8;
+    --brand: #1f5fd6; --yellow: #fff7b0; --yellow-line: #e6c800; --err: #c62828; --ok: #1b7f3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151c; --card: #1c212c; --ink: #e8ecf3; --sub: #9aa4b5; --line: #2e3544;
+      --brand: #5b8ff0; --yellow: #3d3816; --yellow-line: #8a7a14; --err: #ef6b6b; --ok: #4cc27a;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.45 -apple-system, "Hiragino Sans", "Meiryo", sans-serif;
+         padding: env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom)); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--brand); color: #fff;
+           padding: 10px 16px; display: flex; gap: 8px; align-items: center; }
+  header h1 { font-size: 17px; margin: 0; flex: 1; white-space: nowrap; }
+  header select { max-width: 55%; font-size: 15px; padding: 6px 8px; border-radius: 8px; border: 0; }
+  header button { background: rgba(255,255,255,.18); color: #fff; border: 0; border-radius: 8px;
+                  font-size: 15px; padding: 7px 10px; }
+  main { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; color: var(--sub); margin: 0 0 10px; font-weight: 600; }
+  .row { display: flex; gap: 8px; }
+  .row > label { flex: 1; min-width: 0; }
+  label span { display: block; font-size: 13px; color: var(--sub); margin-bottom: 3px; }
+  input { width: 100%; font-size: 22px; padding: 10px 10px; border-radius: 10px;
+          border: 2px solid var(--yellow-line); background: var(--yellow); color: var(--ink);
+          font-variant-numeric: tabular-nums; }
+  input:focus { outline: 3px solid var(--brand); outline-offset: 1px; }
+  input.bad { border-color: var(--err); }
+  input.fixed { background: transparent; border-color: var(--line); }
+  .result { display: flex; justify-content: space-between; margin-top: 12px; padding: 10px 12px;
+            border-radius: 10px; background: var(--bg); font-variant-numeric: tabular-nums; font-size: 18px; }
+  .result b { font-weight: 600; }
+  .msg { color: var(--err); font-size: 14px; min-height: 20px; margin-top: 6px; }
+  .btns { display: flex; gap: 8px; margin-top: 10px; }
+  .btns button { flex: 1; font-size: 18px; padding: 13px; border-radius: 12px; border: 0; font-weight: 600; }
+  .primary { background: var(--brand); color: #fff; }
+  .ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line) !important; }
+  .danger { background: transparent; color: var(--err); border: 1px solid var(--err) !important; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+  th, td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { color: var(--sub); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.sel td { background: var(--yellow); }
+  tbody tr { cursor: pointer; }
+  .empty { color: var(--sub); text-align: center; padding: 18px 0; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+           padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 10px; align-items: center; }
+  footer .state { flex: 1; font-size: 13px; color: var(--sub); }
+  footer .state.dirty { color: var(--err); }
+  footer button { font-size: 17px; padding: 12px 16px; border-radius: 12px; border: 0; background: var(--ok); color: #fff; font-weight: 600; }
+  .note { font-size: 13px; color: var(--sub); }
+</style>
+</head>
+<body>
+<header>
+  <h1>📐 野帳入力</h1>
+  <select id="proj" aria-label="案件"></select>
+  <button id="newProj" aria-label="案件を追加">＋</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2>器械点・後視</h2>
+    <div class="row">
+      <label><span>器械点（X, Y）</span><input class="fixed" value="0 , 0" disabled></label>
+      <label><span>後視(BM)の水平距離</span>
+        <input id="bs" inputmode="decimal" enterkeyhint="done" placeholder="20.36"></label>
+    </div>
+  </section>
+
+  <section class="card" id="entry">
+    <h2 id="entryTitle">測点を入力</h2>
+    <div class="row">
+      <label style="flex:.8"><span>測点</span><input id="f_name" enterkeyhint="next"></label>
+      <label><span>水平距離</span><input id="f_dist" inputmode="decimal" enterkeyhint="next"></label>
+      <label style="flex:.8"><span>高低差</span><input id="f_dh" inputmode="text" enterkeyhint="next"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span>度（時）</span><input id="f_d" inputmode="numeric" enterkeyhint="next"></label>
+      <label><span>分</span><input id="f_m" inputmode="numeric" enterkeyhint="next"></label>
+      <label><span>秒</span><input id="f_s" inputmode="decimal" enterkeyhint="done"></label>
+    </div>
+    <div class="result"><span>X <b id="rx">—</b></span><span>Y <b id="ry">—</b></span></div>
+    <div class="msg" id="msg"></div>
+    <div class="btns" id="addBtns"><button class="primary" id="add">追加して次へ</button></div>
+    <div class="btns" id="editBtns" hidden>
+      <button class="primary" id="update">直す</button>
+      <button class="danger" id="del">消す</button>
+      <button class="ghost" id="cancel">やめる</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>入力済み <span id="count"></span></h2>
+    <table>
+      <thead><tr><th>測点</th><th>距離</th><th>角度</th><th>X</th><th>Y</th></tr></thead>
+      <tbody id="list"></tbody>
+    </table>
+    <p class="note">行をタップすると直せます。入力した値はこのスマホの中に保存されます（通信はしません）。</p>
+  </section>
+
+  <section class="card">
+    <h2>この案件</h2>
+    <div class="btns">
+      <button class="ghost" id="renameProj">名前を変える</button>
+      <button class="danger" id="deleteProj">案件を消す</button>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="state" id="state"></div>
+  <button id="save">Boxに保存</button>
+</footer>
+
+<script>
+"use strict";
+const KEY = "sokuryo_note_v1";
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["f_name", "f_dist", "f_dh", "f_d", "f_m", "f_s"];
+
+// ---------------------------------------------------------------- 保存（このスマホの中だけ）
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.projects) return s; } catch (e) {}
+  return { current: "", projects: {} };
+}
+let store = load();
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(store)); }
+  catch (e) { alert("このスマホに保存できませんでした。早めに「Boxに保存」してください。"); }
+}
+function proj() { return store.projects[store.current]; }
+
+// ---------------------------------------------------------------- 計算
+// 器械点(0,0)、後視BMを X 方向に置く（後視の方向角=0）。方向角 = 度+分/60+秒/3600
+function num(v) { v = String(v ?? "").trim(); if (v === "") return null; const n = Number(v); return isFinite(n) ? n : NaN; }
+function calc(r) {
+  const L = num(r.dist), d = num(r.d), m = num(r.m) ?? 0, s = num(r.s) ?? 0;
+  if (L === null || d === null) return null;
+  if ([L, d, m, s].some(Number.isNaN)) return { err: "数字で入れてください" };
+  if (d >= 360 || m >= 60 || s >= 60 || d < 0 || m < 0 || s < 0) return { err: "度は0〜359、分・秒は0〜59で入れてください" };
+  const az = (d + m / 60 + s / 3600) * Math.PI / 180;
+  return { x: L * Math.cos(az), y: L * Math.sin(az) };
+}
+const f4 = (v) => v.toFixed(4);
+
+// ---------------------------------------------------------------- 画面
+let editing = -1;
+function readForm() {
+  return { name: $("f_name").value.trim(), dist: $("f_dist").value.trim(), dh: $("f_dh").value.trim(),
+           d: $("f_d").value.trim(), m: $("f_m").value.trim(), s: $("f_s").value.trim() };
+}
+function fillForm(r) {
+  $("f_name").value = r.name; $("f_dist").value = r.dist; $("f_dh").value = r.dh;
+  $("f_d").value = r.d; $("f_m").value = r.m; $("f_s").value = r.s;
+}
+function nextName() {
+  const rows = proj().rows;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const n = rows[i].name;
+    if (/^\d+$/.test(n)) return String(Number(n) + 1);
+    const m = n.match(/^(.*?)(\d+)$/);
+    if (m) return m[1] + (Number(m[2]) + 1);
+  }
+  return String(rows.length + 1);
+}
+function preview() {
+  const c = calc(readForm());
+  $("rx").textContent = c && !c.err ? f4(c.x) : "—";
+  $("ry").textContent = c && !c.err ? f4(c.y) : "—";
+  $("msg").textContent = c && c.err ? c.err : "";
+}
+function renderList() {
+  const rows = proj().rows, tb = $("list");
+  $("count").textContent = rows.length ? `（${rows.length}点）` : "";
+  tb.innerHTML = "";
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">まだありません</td></tr>'; return; }
+  rows.forEach((r, i) => {
+    const c = calc(r) || {};
+    const tr = document.createElement("tr");
+    if (i === editing) tr.className = "sel";
+    const cells = [r.name, r.dist, `${r.d}°${String(r.m || 0).padStart(2, "0")}′${String(r.s || 0).padStart(2, "0")}″`,
+                   c.err || c.x === undefined ? "—" : f4(c.x), c.err || c.y === undefined ? "—" : f4(c.y)];
+    cells.forEach((v) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+    tr.onclick = () => startEdit(i);
+    tb.appendChild(tr);
+  });
+}
+function renderState() {
+  const p = proj();
+  const st = $("state");
+  if (!p.rows.length) { st.textContent = ""; st.className = "state"; return; }
+  if (p.dirty) { st.textContent = "● Box にまだ保存していません"; st.className = "state dirty"; }
+  else { st.textContent = `Box に保存済み（${p.savedAt}）`; st.className = "state"; }
+}
+function renderProjects() {
+  const sel = $("proj"); sel.innerHTML = "";
+  Object.keys(store.projects).forEach((n) => { const o = document.createElement("option"); o.textContent = n; sel.appendChild(o); });
+  sel.value = store.current;
+}
+function render() {
+  renderProjects();
+  $("bs").value = proj().bs ?? "";
+  renderList(); renderState(); resetForm();
+}
+function resetForm() {
+  editing = -1;
+  fillForm({ name: nextName(), dist: "", dh: "", d: "", m: "", s: "" });
+  $("entryTitle").textContent = "測点を入力";
+  $("addBtns").hidden = false; $("editBtns").hidden = true;
+  preview();
+}
+function startEdit(i) {
+  editing = i; fillForm(proj().rows[i]);
+  $("entryTitle").textContent = `測点 ${proj().rows[i].name} を直す`;
+  $("addBtns").hidden = true; $("editBtns").hidden = false;
+  preview(); renderList();
+  $("entry").scrollIntoView({ behavior: "smooth" });
+}
+function changed() { proj().dirty = true; persist(); renderList(); renderState(); }
+
+function validRow(r) {
+  const c = calc(r);
+  if (!r.name) return "測点を入れてください";
+  if (!c) return "水平距離と度を入れてください";
+  if (c.err) return c.err;
+  if (num(r.dh) !== null && Number.isNaN(num(r.dh))) return "高低差は数字で入れてください";
+  return "";
+}
+$("add").onclick = () => {
+  const r = readForm(), e = validRow(r);
+  if (e) { $("msg").textContent = e; return; }
+  if (proj().rows.some((x) => x.name === r.name) && !confirm(`測点 ${r.name} は既にあります。追加しますか？`)) return;
+  proj().rows.push(r); changed(); resetForm();
+  $("f_dist").focus();
+};
+$("update").onclick = () => {
+  const r = readForm(), e = validRow(r);
+  if (e) { $("msg").textContent = e; return; }
+  proj().rows[editing] = r; changed(); resetForm();
+};
+$("del").onclick = () => {
+  if (!confirm(`測点 ${proj().rows[editing].name} を消しますか？`)) return;
+  proj().rows.splice(editing, 1); changed(); resetForm();
+};
+$("cancel").onclick = () => { resetForm(); renderList(); };
+
+// Enter（次へ）で次の欄、最後の欄で追加
+FIELDS.forEach((id, i) => {
+  $(id).addEventListener("input", preview);
+  $(id).addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (i < FIELDS.length - 1) $(FIELDS[i + 1]).focus();
+    else (editing < 0 ? $("add") : $("update")).click();
+  });
+});
+$("bs").addEventListener("change", () => { proj().bs = $("bs").value.trim(); changed(); });
+
+// ---------------------------------------------------------------- 案件
+function addProject(name) {
+  name = (name || "").trim().replace(/[\\/:*?"<>|]/g, "_");
+  if (!name) return false;
+  if (store.projects[name]) { alert("同じ名前の案件があります。"); return false; }
+  store.projects[name] = { bs: "", rows: [], dirty: false, savedAt: "" };
+  store.current = name; persist(); render(); return true;
+}
+$("newProj").onclick = () => addProject(prompt("案件名（PCのアプリと同じ名前にすると読み込みが簡単です）"));
+$("proj").onchange = () => { store.current = $("proj").value; persist(); render(); };
+$("renameProj").onclick = () => {
+  const n = prompt("新しい案件名", store.current);
+  if (!n || n === store.current || store.projects[n]) return;
+  store.projects[n] = proj(); delete store.projects[store.current]; store.current = n; persist(); render();
+};
+$("deleteProj").onclick = () => {
+  const p = proj();
+  if (p.dirty && p.rows.length && !confirm("Box に保存していない入力があります。それでも消しますか？")) return;
+  if (!confirm(`案件「${store.current}」をこのスマホから消しますか？`)) return;
+  delete store.projects[store.current];
+  store.current = Object.keys(store.projects)[0] || "";
+  if (!store.current) addProject("案件1"); else { persist(); render(); }
+};
+
+// ---------------------------------------------------------------- Box に保存（CSV を共有メニューで渡す）
+function toCsv() {
+  const p = proj();
+  const q = (v) => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const lines = ["器械点名,T1", "器械点X,0", "器械点Y,0", "後視点名,BM", `後視X,${p.bs || ""}`, "後視Y,0", "",
+                 "測点,水平距離,高低差,度,分,秒,X,Y"];
+  p.rows.forEach((r) => {
+    const c = calc(r) || {};
+    lines.push([r.name, r.dist, r.dh, r.d, r.m || 0, r.s || 0, c.x === undefined ? "" : f4(c.x),
+                c.y === undefined ? "" : f4(c.y)].map(q).join(","));
+  });
+  return "﻿" + lines.join("\r\n") + "\r\n";
+}
+$("save").onclick = async () => {
+  const p = proj();
+  if (!p.rows.length) { alert("まだ測点がありません。"); return; }
+  if (!num(p.bs)) { if (!confirm("後視(BM)の水平距離が空です。このまま保存しますか？")) return; }
+  const fname = `${store.current}.csv`;
+  const file = new File([toCsv()], fname, { type: "text/csv" });
+  let done = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: fname });
+      done = true;
+    } catch (e) { if (e.name === "AbortError") return; }
+  }
+  if (!done) {                       // 共有できない端末はダウンロード
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file); a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  if (confirm("Box の「sokuryo_jw › 野帳」フォルダに保存できましたか？")) {
+    const t = new Date();
+    p.dirty = false; p.savedAt = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}`;
+    persist(); renderState();
+  }
+};
+
+// ---------------------------------------------------------------- 起動
+if (!store.current || !store.projects[store.current]) {
+  const first = Object.keys(store.projects)[0];
+  if (first) store.current = first; else store.projects["案件1"] = { bs: "", rows: [], dirty: false, savedAt: "" }, store.current = "案件1";
+  persist();
+}
+render();
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
