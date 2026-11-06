@@ -1,5 +1,5 @@
 // 電波の無い現場でも開けるよう、画面一式をスマホに保存しておく
-const CACHE = "nocho-v1";
+const CACHE = "nocho-v3";
 const FILES = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))));
 self.addEventListener("activate", (e) => e.waitUntil(
