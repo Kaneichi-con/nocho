@@ -72,16 +72,36 @@
   footer .state.dirty { color: var(--err); }
   footer button { font-size: 17px; padding: 12px 16px; border-radius: 12px; border: 0; background: var(--ok); color: #fff; font-weight: 600; }
   .note { font-size: 13px; color: var(--sub); }
+  .projbar { display: flex; gap: 8px; align-items: center; }
+  .projbar select { flex: 1; font-size: 17px; padding: 9px 8px; border-radius: 10px; border: 1px solid var(--line);
+                    background: var(--card); color: var(--ink); }
+  .projbar button { font-size: 20px; width: 46px; height: 42px; border-radius: 10px; border: 0; background: var(--brand); color: #fff; }
+  .home { display: flex; flex-direction: column; gap: 14px; padding: 24px 16px; max-width: 520px; margin: 0 auto; }
+  .home p { color: var(--sub); margin: 0 0 4px; }
+  .home button { display: block; width: 100%; text-align: left; padding: 22px 20px; border-radius: 16px; border: 2px solid var(--line);
+                 background: var(--card); color: var(--ink); font-size: 22px; font-weight: 700; }
+  .home button small { display: block; font-size: 14px; font-weight: 400; color: var(--sub); margin-top: 6px; }
+  .home button.last { border-color: var(--brand); }
+  .check { font-size: 14px; margin-top: 10px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>📐 野帳入力</h1>
-  <select id="proj" aria-label="案件"></select>
-  <button id="newProj" aria-label="案件を追加">＋</button>
+  <h1 id="title">📐 野帳入力</h1>
+  <button id="modeBtn" hidden>種類を選び直す</button>
 </header>
 
-<main>
+<section class="home" id="home">
+  <p>今回測るのはどちらですか？</p>
+  <button id="goTs">📡 光波<small>測点・水平距離・角度（度分秒）→ X・Y</small></button>
+  <button id="goLv">📏 レベル<small>後視・前視 → 機械高・地盤高（器高式）</small></button>
+</section>
+
+<main id="tsMain" hidden>
+  <section class="card">
+    <h2>案件（光波）</h2>
+    <div class="projbar"><select id="proj" aria-label="案件"></select><button id="newProj" aria-label="案件を追加">＋</button></div>
+  </section>
   <section class="card">
     <h2>器械点・後視</h2>
     <div class="row">
@@ -133,12 +153,66 @@
       <button class="danger" id="deleteProj">案件を消す</button>
     </div>
   </section>
+  <footer>
+    <div class="state" id="state"></div>
+    <button id="save">Boxに保存</button>
+  </footer>
 </main>
 
-<footer>
-  <div class="state" id="state"></div>
-  <button id="save">Boxに保存</button>
-</footer>
+<main id="lvMain" hidden>
+  <section class="card">
+    <h2>案件（レベル）</h2>
+    <div class="projbar"><select id="lvProj" aria-label="案件"></select><button id="lvNew" aria-label="案件を追加">＋</button></div>
+  </section>
+  <section class="card">
+    <h2>BM</h2>
+    <label><span>BM の標高（1行目の地盤高）</span><input id="lvBm" inputmode="decimal" enterkeyhint="done" placeholder="100.000"></label>
+  </section>
+  <section class="card" id="lvEntry">
+    <h2 id="lvTitle">測点を入力</h2>
+    <div class="row">
+      <label><span>測点</span><input id="l_name" enterkeyhint="next"></label>
+      <label><span>距離</span><input id="l_dist" inputmode="decimal" enterkeyhint="next" placeholder="前の点から"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span>後視 BS</span><input id="l_bs" inputmode="decimal" enterkeyhint="next"></label>
+      <label><span>前視 FS</span><input id="l_fs" inputmode="decimal" enterkeyhint="next"></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label style="flex:.8"><span>計画高 FH</span><input id="l_fh" inputmode="decimal" enterkeyhint="done"></label>
+      <label><span>メモ</span><input id="l_memo" class="memo" enterkeyhint="done" placeholder="TP・水路際 など"></label>
+    </div>
+    <p class="note" id="lvHint"></p>
+    <div class="result"><span>機械高 <b id="l_rih">—</b></span><span>地盤高 <b id="l_rgh">—</b></span><span>差 <b id="l_rdf">—</b></span></div>
+    <div class="msg" id="lvMsg"></div>
+    <div class="btns" id="lvAddBtns"><button class="primary" id="lvAdd">追加して次へ</button></div>
+    <div class="btns" id="lvEditBtns" hidden>
+      <button class="primary" id="lvUpdate">直す</button>
+      <button class="danger" id="lvDel">消す</button>
+      <button class="ghost" id="lvCancel">やめる</button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>入力済み <span id="lvCount"></span></h2>
+    <table>
+      <thead><tr><th>測点</th><th>後視</th><th>前視</th><th>機械高</th><th>地盤高</th><th>差</th></tr></thead>
+      <tbody id="lvList"></tbody>
+    </table>
+    <div class="check" id="lvCheck"></div>
+    <p class="note">行をタップすると直せます。差 = 計画高 − 地盤高（＋は盛土、−は切土）。入力した値はこのスマホの中に保存されます（通信はしません）。</p>
+  </section>
+  <section class="card">
+    <h2>この案件</h2>
+    <div class="btns">
+      <button class="ghost" id="lvRename">名前を変える</button>
+      <button class="danger" id="lvDeleteProj">案件を消す</button>
+    </div>
+  </section>
+  <footer>
+    <div class="state" id="lvState"></div>
+    <button id="lvSave">Boxに保存</button>
+  </footer>
+</main>
 
 <script>
 "use strict";
@@ -352,12 +426,12 @@ const xe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace
 // 書式番号: 1 見出し 2 黄色(入力) 3 計算(0.0000) 4 表題 5 灰色の説明 6 項目名 7 枠だけ 8 参考(灰色・0.0000)
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="1"><numFmt numFmtId="164" formatCode="0.0000"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="0.0000"/><numFmt numFmtId="165" formatCode="0.000"/></numFmts>
 <fonts count="4"><font><sz val="11"/><name val="Meiryo UI"/></font><font><b/><sz val="11"/><name val="Meiryo UI"/></font><font><b/><sz val="14"/><name val="Meiryo UI"/></font><font><sz val="10"/><color rgb="FF666666"/><name val="Meiryo UI"/></font></fonts>
 <fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/></patternFill></fill></fills>
 <borders count="2"><border/><border><left style="thin"><color rgb="FFA0A0A0"/></left><right style="thin"><color rgb="FFA0A0A0"/></right><top style="thin"><color rgb="FFA0A0A0"/></top><bottom style="thin"><color rgb="FFA0A0A0"/></bottom></border></borders>
 <cellStyleXfs count="1"><xf/></cellStyleXfs>
-<cellXfs count="9"><xf/>
+<cellXfs count="11"><xf/>
 <xf fontId="1" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
 <xf fillId="2" borderId="1" applyFill="1" applyBorder="1"/>
 <xf numFmtId="164" borderId="1" applyNumberFormat="1" applyBorder="1"/>
@@ -366,6 +440,8 @@ const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <xf fillId="3" borderId="1" applyFill="1" applyBorder="1"/>
 <xf borderId="1" applyBorder="1"/>
 <xf numFmtId="164" fillId="4" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1"/>
+<xf numFmtId="165" borderId="1" applyNumberFormat="1" applyBorder="1"/>
+<xf numFmtId="165" fillId="2" borderId="1" applyNumberFormat="1" applyFill="1" applyBorder="1"/>
 </cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 function toXlsx() {
   const p = proj(), H = 11, N = Math.max(p.rows.length + 50, 100);
@@ -444,6 +520,274 @@ if (!store.current || !store.projects[store.current]) {
   persist();
 }
 render();
+
+// ================================================================ レベル（器高式）
+// 1行目 = BM: 地盤高 = BM の標高、機械高 = 地盤高 + 後視
+// 2行目から: 地盤高 = 直前の機械高 − 前視。後視もある行（盛替え・TP）は 機械高 = 地盤高 + 後視 に替わる
+const LV_KEY = "sokuryo_level_v1";
+const LV_FIELDS = ["l_name", "l_dist", "l_bs", "l_fs", "l_fh", "l_memo"];
+let lv = (() => {
+  try { const s = JSON.parse(localStorage.getItem(LV_KEY)); if (s && s.projects) return s; } catch (e) {}
+  return { current: "", projects: {} };
+})();
+let lvEditing = -1;
+function lvPersist() {
+  try { localStorage.setItem(LV_KEY, JSON.stringify(lv)); }
+  catch (e) { alert("このスマホに保存できませんでした。早めに「Boxに保存」してください。"); }
+}
+function lvProj() { return lv.projects[lv.current]; }
+const f3 = (v) => v.toFixed(3);
+
+function lvCalc(rows, bm) {
+  let ih = null, sumBs = 0, sumTpFs = 0, lastFs = null, lastGh = null;
+  const out = rows.map((r, i) => {
+    const bs = num(r.bs), fs = num(r.fs), fh = num(r.fh);
+    let gh = null, err = "";
+    if ([bs, fs, fh, num(r.dist)].some(Number.isNaN)) return { err: "数字で入れてください" };
+    if (i === 0) { gh = bm; if (bs === null) err = "1行目（BM）は後視を入れてください"; }
+    else if (fs === null) err = "前視を入れてください";
+    else if (ih === null) err = "機械高が決まっていません";
+    else gh = ih - fs;
+    let rih = null;
+    if (bs !== null && gh !== null && !Number.isNaN(gh)) {
+      ih = rih = gh + bs; sumBs += bs;
+      if (fs !== null) sumTpFs += fs;
+      lastFs = null;
+    } else if (fs !== null && gh !== null) lastFs = fs;
+    if (gh !== null) lastGh = gh;
+    return { ih: rih, gh, diff: fh === null || gh === null ? null : fh - gh, err };
+  });
+  const check = bm !== null && !Number.isNaN(bm) && lastGh !== null
+    ? { bs: sumBs, fs: sumTpFs + (lastFs || 0), dz: lastGh - bm } : null;
+  return { out, check };
+}
+function lvBm() { const v = num(lvProj().bm); return v === null || Number.isNaN(v) ? null : v; }
+function lvRead() {
+  const v = (id) => $(id).value.trim();
+  return { name: v("l_name"), dist: v("l_dist"), bs: v("l_bs"), fs: v("l_fs"), fh: v("l_fh"), memo: v("l_memo") };
+}
+function lvFill(r) {
+  $("l_name").value = r.name; $("l_dist").value = r.dist ?? ""; $("l_bs").value = r.bs ?? "";
+  $("l_fs").value = r.fs ?? ""; $("l_fh").value = r.fh ?? ""; $("l_memo").value = r.memo ?? "";
+}
+function lvNextName() {
+  const rows = lvProj().rows;
+  if (!rows.length) return "BM";
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const m = rows[i].name.match(/^(.*?)(\d+)$/);
+    if (m) return m[1] + (Number(m[2]) + 1);
+  }
+  return "No." + rows.length;
+}
+function lvPreview() {
+  const rows = lvProj().rows.slice(), r = lvRead();
+  const idx = lvEditing < 0 ? rows.length : lvEditing;
+  rows[idx] = r;
+  const c = lvCalc(rows.slice(0, idx + 1), lvBm()).out[idx] || {};
+  $("l_rih").textContent = c.ih != null ? f3(c.ih) : "—";
+  $("l_rgh").textContent = c.gh != null ? f3(c.gh) : "—";
+  $("l_rdf").textContent = c.diff != null ? f3(c.diff) : "—";
+  const filled = r.bs !== "" || r.fs !== "";
+  $("lvMsg").textContent = filled && c.err ? c.err : "";
+  $("lvHint").textContent = idx === 0 ? "1行目は BM です。後視だけ入れます。"
+    : "前視を入れます。盛替え（TP）は前視と後視の両方を入れます。縦断図にする点は「距離」も入れます。";
+}
+function lvRenderList() {
+  const p = lvProj(), tb = $("lvList");
+  const { out, check } = lvCalc(p.rows, lvBm());
+  $("lvCount").textContent = p.rows.length ? `（${p.rows.length}点）` : "";
+  tb.innerHTML = "";
+  if (!p.rows.length) tb.innerHTML = '<tr><td colspan="6" class="empty">まだありません</td></tr>';
+  p.rows.forEach((r, i) => {
+    const c = out[i] || {}, tr = document.createElement("tr");
+    if (i === lvEditing) tr.className = "sel";
+    [r.name, r.bs, r.fs, c.ih != null ? f3(c.ih) : "", c.gh != null ? f3(c.gh) : (c.err ? "—" : ""),
+     c.diff != null ? f3(c.diff) : ""].forEach((v) => { const td = document.createElement("td"); td.textContent = v ?? ""; tr.appendChild(td); });
+    if (r.memo) { const m = document.createElement("span"); m.className = "sub"; m.textContent = r.memo; tr.firstChild.appendChild(m); }
+    tr.onclick = () => lvStartEdit(i);
+    tb.appendChild(tr);
+  });
+  const ok = check && Math.abs(check.bs - check.fs - check.dz) < 0.0005;
+  $("lvCheck").textContent = check && p.rows.length > 1
+    ? `${ok ? "✅" : "❌"} 検算 ΣBS ${f3(check.bs)} − ΣFS ${f3(check.fs)} = ${f3(check.bs - check.fs)}／最後の地盤高 − BM = ${f3(check.dz)}` : "";
+}
+function lvRenderState() {
+  const p = lvProj(), st = $("lvState");
+  if (!p.rows.length) { st.textContent = ""; st.className = "state"; return; }
+  st.textContent = p.dirty ? "● Box にまだ保存していません" : `Box に保存済み（${p.savedAt}）`;
+  st.className = p.dirty ? "state dirty" : "state";
+}
+function lvResetForm() {
+  lvEditing = -1;
+  lvFill({ name: lvNextName(), dist: "", bs: "", fs: "", fh: "", memo: "" });
+  $("lvTitle").textContent = "測点を入力";
+  $("lvAddBtns").hidden = false; $("lvEditBtns").hidden = true;
+  lvPreview();
+}
+function lvStartEdit(i) {
+  lvEditing = i; lvFill(lvProj().rows[i]);
+  $("lvTitle").textContent = `測点 ${lvProj().rows[i].name} を直す`;
+  $("lvAddBtns").hidden = true; $("lvEditBtns").hidden = false;
+  lvPreview(); lvRenderList();
+  $("lvEntry").scrollIntoView({ behavior: "smooth" });
+}
+function lvRender() {
+  const sel = $("lvProj"); sel.innerHTML = "";
+  Object.keys(lv.projects).forEach((n) => { const o = document.createElement("option"); o.textContent = n; sel.appendChild(o); });
+  sel.value = lv.current;
+  $("lvBm").value = lvProj().bm ?? "";
+  lvRenderList(); lvRenderState(); lvResetForm();
+}
+function lvChanged() { lvProj().dirty = true; lvPersist(); lvRenderList(); lvRenderState(); }
+function lvValid(r, idx) {
+  if (!r.name) return "測点を入れてください";
+  if (r.bs === "" && r.fs === "") return "後視か前視を入れてください";
+  const rows = lvProj().rows.slice(); rows[idx] = r;
+  const c = lvCalc(rows.slice(0, idx + 1), lvBm()).out[idx];
+  return c.err && c.err !== "機械高が決まっていません" ? c.err : "";
+}
+$("lvAdd").onclick = () => {
+  const r = lvRead(), e = lvValid(r, lvProj().rows.length);
+  if (e) { $("lvMsg").textContent = e; return; }
+  lvProj().rows.push(r); lvChanged(); lvResetForm(); $("l_dist").focus();
+};
+$("lvUpdate").onclick = () => {
+  const r = lvRead(), e = lvValid(r, lvEditing);
+  if (e) { $("lvMsg").textContent = e; return; }
+  lvProj().rows[lvEditing] = r; lvChanged(); lvResetForm();
+};
+$("lvDel").onclick = () => {
+  if (!confirm(`測点 ${lvProj().rows[lvEditing].name} を消しますか？`)) return;
+  lvProj().rows.splice(lvEditing, 1); lvChanged(); lvResetForm();
+};
+$("lvCancel").onclick = () => { lvResetForm(); lvRenderList(); };
+LV_FIELDS.forEach((id, i) => {
+  $(id).addEventListener("input", lvPreview);
+  $(id).addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (i < LV_FIELDS.length - 1) $(LV_FIELDS[i + 1]).focus();
+    else (lvEditing < 0 ? $("lvAdd") : $("lvUpdate")).click();
+  });
+});
+$("lvBm").addEventListener("change", () => { lvProj().bm = $("lvBm").value.trim(); lvChanged(); lvPreview(); });
+
+function lvAddProject(name) {
+  name = (name || "").trim().replace(/[\\/:*?"<>|]/g, "_");
+  if (!name) return;
+  if (lv.projects[name]) { alert("同じ名前の案件があります。"); return; }
+  lv.projects[name] = { bm: "100.000", rows: [], dirty: false, savedAt: "" };
+  lv.current = name; lvPersist(); lvRender();
+}
+$("lvNew").onclick = () => lvAddProject(prompt("案件名（PCのアプリと同じ名前にすると分かりやすいです）"));
+$("lvProj").onchange = () => { lv.current = $("lvProj").value; lvPersist(); lvRender(); };
+$("lvRename").onclick = () => {
+  const n = prompt("新しい案件名", lv.current);
+  if (!n || n === lv.current || lv.projects[n]) return;
+  lv.projects[n] = lvProj(); delete lv.projects[lv.current]; lv.current = n; lvPersist(); lvRender();
+};
+$("lvDeleteProj").onclick = () => {
+  const p = lvProj();
+  if (p.dirty && p.rows.length && !confirm("Box に保存していない入力があります。それでも消しますか？")) return;
+  if (!confirm(`案件「${lv.current}」をこのスマホから消しますか？`)) return;
+  delete lv.projects[lv.current];
+  lv.current = Object.keys(lv.projects)[0] || "";
+  if (!lv.current) lvAddProject("案件1"); else { lvPersist(); lvRender(); }
+};
+
+// 野帳 Excel（PCの「レベル野帳テンプレート」と同じ書式。機械高・地盤高・差は計算式つき）
+function lvToXlsx() {
+  const p = lvProj(), bm = lvBm(), F = 6, N = Math.max(p.rows.length + 50, 100);
+  const { out } = lvCalc(p.rows, bm);
+  const rows = {};
+  const put = (ref, xml) => { const r = Number(ref.replace(/[A-Z]/g, "")); (rows[r] = rows[r] || []).push(xml); };
+  const str = (ref, v, s) => put(ref, `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${xe(v)}</t></is></c>`);
+  const val = (ref, v, s) => {
+    const n = num(v);
+    if (v === "" || v === undefined || v === null) put(ref, `<c r="${ref}" s="${s}"/>`);
+    else if (n !== null && !Number.isNaN(n)) put(ref, `<c r="${ref}" s="${s}"><v>${n}</v></c>`);
+    else str(ref, v, s);
+  };
+  const fml = (ref, f, v, s) => put(ref, `<c r="${ref}" s="${s}"${v == null ? ' t="str"' : ""}><f>${xe(f)}</f>${v == null ? "<v></v>" : `<v>${v}</v>`}</c>`);
+  str("A1", "レベル野帳（器高式）", 4);
+  str("A2", `${lv.current}　黄色のセルを入力すると 機械高・地盤高・差 が自動計算されます（1行目は BM）`, 5);
+  const heads = [["測点", ""], ["距離", "(m)"], ["後視", "BS"], ["機械高", "IH"], ["前視", "FS"], ["地盤高", "GH"], ["計画高", "FH"], ["差", "FH−GH"], ["メモ", ""]];
+  heads.forEach(([a, b], j) => { str(`${"ABCDEFGHI"[j]}4`, a, 1); str(`${"ABCDEFGHI"[j]}5`, b, 1); });
+  for (let k = 0; k < N; k++) {
+    const r = F + k, d = p.rows[k] || {}, c = out[k] || {};
+    val(`A${r}`, k < p.rows.length ? d.name : (k === 0 ? "BM" : ""), 2);
+    val(`B${r}`, d.dist ?? "", 10);
+    val(`C${r}`, d.bs ?? "", 10);
+    fml(`D${r}`, `IF(C${r}="","",F${r}+C${r})`, c.ih ?? null, 9);
+    val(`E${r}`, d.fs ?? "", 10);
+    if (k === 0) val(`F${r}`, bm ?? "", 10);
+    else fml(`F${r}`, `IF(E${r}="","",LOOKUP(2,1/(D$${F}:D${r - 1}<>""),D$${F}:D${r - 1})-E${r})`, c.gh ?? null, 9);
+    val(`G${r}`, d.fh ?? "", 10);
+    fml(`H${r}`, `IF(OR(G${r}="",F${r}=""),"",G${r}-F${r})`, c.diff ?? null, 9);
+    val(`I${r}`, d.memo ?? "", 2);
+  }
+  const widths = [10, 8, 9, 10, 9, 10, 10, 9, 18];
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${
+    widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols><sheetData>${
+    Object.keys(rows).map(Number).sort((a, b) => a - b).map((r) => `<row r="${r}">${rows[r].join("")}</row>`).join("")
+  }</sheetData></worksheet>`;
+  return zip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="レベル野帳" sheetId="1" r:id="rId1"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["xl/styles.xml", STYLES],
+    ["xl/worksheets/sheet1.xml", sheet],
+  ]);
+}
+$("lvSave").onclick = async () => {
+  const p = lvProj();
+  if (!p.rows.length) { alert("まだ測点がありません。"); return; }
+  const fname = `${lv.current}_レベル.xlsx`;
+  const file = new File([lvToXlsx()], fname, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  let done = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: fname }); done = true; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  if (!done) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file); a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  if (confirm("Box の「sokuryo_jw › 野帳」フォルダに保存できましたか？")) {
+    const t = new Date();
+    p.dirty = false; p.savedAt = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}`;
+    lvPersist(); lvRenderState();
+  }
+};
+if (!lv.current || !lv.projects[lv.current]) {
+  const first = Object.keys(lv.projects)[0];
+  if (first) lv.current = first;
+  else { lv.projects["案件1"] = { bm: "100.000", rows: [], dirty: false, savedAt: "" }; lv.current = "案件1"; }
+  lvPersist();
+}
+
+// ================================================================ 光波／レベルの選択
+function showMode(m) {
+  $("home").hidden = !!m;
+  $("tsMain").hidden = m !== "ts";
+  $("lvMain").hidden = m !== "lv";
+  $("modeBtn").hidden = !m;
+  $("title").textContent = m === "ts" ? "📡 光波の野帳" : m === "lv" ? "📏 レベルの野帳" : "📐 野帳入力";
+  if (m) { try { localStorage.setItem("sokuryo_mode", m); } catch (e) {} }
+  if (m === "ts") render();
+  if (m === "lv") lvRender();
+  const last = (() => { try { return localStorage.getItem("sokuryo_mode"); } catch (e) { return null; } })();
+  $("goTs").classList.toggle("last", last === "ts");
+  $("goLv").classList.toggle("last", last === "lv");
+  window.scrollTo(0, 0);
+}
+$("goTs").onclick = () => showMode("ts");
+$("goLv").onclick = () => showMode("lv");
+$("modeBtn").onclick = () => showMode("");
+showMode("");
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
 </script>
 </body>
