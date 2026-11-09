@@ -83,6 +83,10 @@
   .home button small { display: block; font-size: 14px; font-weight: 400; color: var(--sub); margin-top: 6px; }
   .home button.last { border-color: var(--brand); }
   .check { font-size: 14px; margin-top: 10px; }
+  .seg { display: flex; gap: 8px; margin-top: 10px; }
+  .seg button { flex: 1; font-size: 20px; font-weight: 700; padding: 14px; border-radius: 12px;
+                border: 2px solid var(--line); background: var(--card); color: var(--ink); }
+  .seg button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
 </style>
 </head>
 <body>
@@ -92,9 +96,10 @@
 </header>
 
 <section class="home" id="home">
-  <p>今回測るのはどちらですか？</p>
+  <p>今回の測量の種類を選んでください</p>
   <button id="goTs">📡 光波<small>測点・水平距離・角度（度分秒）→ X・Y</small></button>
   <button id="goLv">📏 レベル<small>後視・前視 → 機械高・地盤高（器高式）</small></button>
+  <button id="goPl">📐 ポール横断<small>〇m 進んで 〇m 上がる／下がる → 地盤高・横断図</small></button>
 </section>
 
 <main id="tsMain" hidden>
@@ -211,6 +216,62 @@
   <footer>
     <div class="state" id="lvState"></div>
     <button id="lvSave">Boxに保存</button>
+  </footer>
+</main>
+
+<main id="plMain" hidden>
+  <section class="card">
+    <h2>案件</h2>
+    <div class="projbar"><select id="plProj" aria-label="案件"></select><button id="plNew" aria-label="案件を追加">＋</button></div>
+  </section>
+  <section class="card">
+    <h2>測点と側</h2>
+    <div class="row">
+      <label><span>測点</span><input id="p_st" enterkeyhint="next" placeholder="No.1"></label>
+      <label><span>CL 地盤高（分かれば）</span><input id="p_cl" inputmode="decimal" enterkeyhint="done" placeholder="空欄でも可"></label>
+    </div>
+    <div class="seg">
+      <button type="button" id="sideL">◀ 左側</button>
+      <button type="button" id="sideR">右側 ▶</button>
+    </div>
+    <div class="btns"><button class="ghost" id="plNextSt">次の測点へ</button></div>
+  </section>
+  <section class="card" id="plEntry">
+    <h2 id="plTitle">区間を入力（CL から外へ順に）</h2>
+    <div class="row">
+      <label><span>距離（進んだ）</span><input id="p_dist" inputmode="decimal" enterkeyhint="next"></label>
+      <label class="pm"><span>高低差（上り＋ 下り−）</span><input id="p_dh" inputmode="decimal" enterkeyhint="next"><button type="button" id="plSign" aria-label="プラスマイナスを切り替える">±</button></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span>メモ</span><input id="p_memo" class="memo" enterkeyhint="done" placeholder="法肩・側溝・道路端 など"></label>
+    </div>
+    <div class="result"><span>CL から <b id="p_rs">—</b> m</span><span>地盤高 <b id="p_rz">—</b></span></div>
+    <div class="msg" id="plMsg"></div>
+    <div class="btns" id="plAddBtns"><button class="primary" id="plAdd">追加して次へ</button></div>
+    <div class="btns" id="plEditBtns" hidden>
+      <button class="primary" id="plUpdate">直す</button>
+      <button class="danger" id="plDel">消す</button>
+      <button class="ghost" id="plCancel">やめる</button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>入力済み <span id="plCount"></span></h2>
+    <table>
+      <thead><tr><th>側</th><th>距離</th><th>高低差</th><th>CLから</th><th>地盤高</th></tr></thead>
+      <tbody id="plList"></tbody>
+    </table>
+    <p class="note">行をタップすると直せます。CL 地盤高が空欄の測点は、仮に 100.000 として地盤高を出します（PC で直せます）。入力した値はこのスマホの中に保存されます（通信はしません）。</p>
+  </section>
+  <section class="card">
+    <h2>この案件</h2>
+    <div class="btns">
+      <button class="ghost" id="plRename">名前を変える</button>
+      <button class="danger" id="plDeleteProj">案件を消す</button>
+    </div>
+  </section>
+  <footer>
+    <div class="state" id="plState"></div>
+    <button id="plSave">Boxに保存</button>
   </footer>
 </main>
 
@@ -769,23 +830,305 @@ if (!lv.current || !lv.projects[lv.current]) {
   lvPersist();
 }
 
-// ================================================================ 光波／レベルの選択
+// ================================================================ ポール横断
+// 1行 = 1区間（測点・側・距離・高低差）。CL から外へ順に足して、CL からの距離と地盤高を出す
+const PL_KEY = "sokuryo_pole_v1";
+const PL_TEMP = 100;
+let pl = (() => {
+  try { const s = JSON.parse(localStorage.getItem(PL_KEY)); if (s && s.projects) return s; } catch (e) {}
+  return { current: "", projects: {} };
+})();
+let plEditing = -1;
+const plNew = () => ({ rows: [], cl: {}, st: "No.0", side: "左", dirty: false, savedAt: "" });
+function plPersist() {
+  try { localStorage.setItem(PL_KEY, JSON.stringify(pl)); }
+  catch (e) { alert("このスマホに保存できませんでした。早めに「Boxに保存」してください。"); }
+}
+function plProj() { return pl.projects[pl.current]; }
+const f2 = (v) => v.toFixed(2);
+function plClz(p, st) { const v = num(p.cl[st]); return v === null || Number.isNaN(v) ? null : v; }
+// 行ごとに { s: CL からの距離, z: 地盤高, temp: CL が仮か }
+function plCalc(rows, p) {
+  const acc = {}, out = [];
+  rows.forEach((r) => {
+    const d = num(r.dist), h = num(r.dh);
+    if (d === null || Number.isNaN(d) || Number.isNaN(h)) { out.push({}); return; }
+    const key = r.st + "|" + r.side, z0 = plClz(p, r.st);
+    const a = acc[key] || (acc[key] = { s: 0, z: z0 === null ? PL_TEMP : z0 });
+    a.s += d; a.z += h || 0;
+    out.push({ s: a.s, z: a.z, temp: z0 === null });
+  });
+  return out;
+}
+function plOrder(p) {           // 表示・保存の順: 測点（入れた順）→ 左 → 右、それぞれ入れた順
+  const sts = [];
+  p.rows.forEach((r) => { if (!sts.includes(r.st)) sts.push(r.st); });
+  const idx = [];
+  sts.forEach((st) => ["左", "右"].forEach((sd) => p.rows.forEach((r, i) => { if (r.st === st && r.side === sd) idx.push(i); })));
+  return { sts, idx };
+}
+function plSetSide(sd) {
+  plProj().side = sd;
+  $("sideL").className = sd === "左" ? "on" : "";
+  $("sideR").className = sd === "右" ? "on" : "";
+  plPreview();
+}
+function plRead() {
+  const v = (id) => $(id).value.trim();
+  return { st: v("p_st"), side: $("sideR").className === "on" ? "右" : "左", dist: v("p_dist"), dh: v("p_dh"), memo: v("p_memo") };
+}
+function plPreview() {
+  const p = plProj(), rows = p.rows.slice(), r = plRead();
+  const idx = plEditing < 0 ? rows.length : plEditing;
+  rows[idx] = r;
+  const c = plCalc(rows, p)[idx] || {};
+  $("p_rs").textContent = c.s != null ? f2(c.s) : "—";
+  $("p_rz").textContent = c.z != null ? f3(c.z) + (c.temp ? "（仮）" : "") : "—";
+  $("plMsg").textContent = "";
+}
+function plRenderList() {
+  const p = plProj(), tb = $("plList"), calc = plCalc(p.rows, p), { sts, idx } = plOrder(p);
+  $("plCount").textContent = p.rows.length ? `（${sts.length}測点・${p.rows.length}区間）` : "";
+  tb.innerHTML = "";
+  if (!p.rows.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">まだありません</td></tr>'; return; }
+  let last = null;
+  idx.forEach((i) => {
+    const r = p.rows[i], c = calc[i] || {};
+    if (r.st !== last) {
+      last = r.st;
+      const z0 = plClz(p, r.st), h = document.createElement("tr");
+      h.innerHTML = `<td colspan="5" style="text-align:left;font-weight:700;background:var(--bg)"></td>`;
+      h.firstChild.textContent = `${r.st}　CL ${z0 === null ? "（地盤高なし・仮 100.000）" : f3(z0)}`;
+      h.onclick = () => { $("p_st").value = r.st; $("p_cl").value = p.cl[r.st] ?? ""; p.st = r.st; plPersist(); plPreview(); };
+      tb.appendChild(h);
+    }
+    const tr = document.createElement("tr");
+    if (i === plEditing) tr.className = "sel";
+    [r.side, r.dist, r.dh, c.s != null ? f2(c.s) : "", c.z != null ? f3(c.z) : ""]
+      .forEach((v) => { const td = document.createElement("td"); td.textContent = v ?? ""; tr.appendChild(td); });
+    if (r.memo) { const m = document.createElement("span"); m.className = "sub"; m.textContent = r.memo; tr.firstChild.appendChild(m); }
+    tr.onclick = () => plStartEdit(i);
+    tb.appendChild(tr);
+  });
+}
+function plRenderState() {
+  const p = plProj(), st = $("plState");
+  if (!p.rows.length) { st.textContent = ""; st.className = "state"; return; }
+  st.textContent = p.dirty ? "● Box にまだ保存していません" : `Box に保存済み（${p.savedAt}）`;
+  st.className = p.dirty ? "state dirty" : "state";
+}
+function plResetForm() {
+  const p = plProj();
+  plEditing = -1;
+  $("p_st").value = p.st; $("p_cl").value = p.cl[p.st] ?? "";
+  $("p_dist").value = ""; $("p_dh").value = ""; $("p_memo").value = "";
+  $("plTitle").textContent = "区間を入力（CL から外へ順に）";
+  $("plAddBtns").hidden = false; $("plEditBtns").hidden = true;
+  plSetSide(p.side);
+}
+function plStartEdit(i) {
+  const r = plProj().rows[i];
+  plEditing = i;
+  $("p_st").value = r.st; $("p_cl").value = plProj().cl[r.st] ?? "";
+  $("p_dist").value = r.dist; $("p_dh").value = r.dh; $("p_memo").value = r.memo ?? "";
+  $("sideL").className = r.side === "左" ? "on" : ""; $("sideR").className = r.side === "右" ? "on" : "";
+  $("plTitle").textContent = `${r.st} ${r.side}側の区間を直す`;
+  $("plAddBtns").hidden = true; $("plEditBtns").hidden = false;
+  plPreview(); plRenderList();
+  $("plEntry").scrollIntoView({ behavior: "smooth" });
+}
+function plRender() {
+  const sel = $("plProj"); sel.innerHTML = "";
+  Object.keys(pl.projects).forEach((n) => { const o = document.createElement("option"); o.textContent = n; sel.appendChild(o); });
+  sel.value = pl.current;
+  plRenderList(); plRenderState(); plResetForm();
+}
+function plChanged() { plProj().dirty = true; plPersist(); plRenderList(); plRenderState(); }
+function plValid(r) {
+  if (!r.st) return "測点を入れてください";
+  const d = num(r.dist), h = num(r.dh);
+  if (d === null) return "距離を入れてください";
+  if (Number.isNaN(d) || d < 0) return "距離は 0 以上の数字で入れてください";
+  if (Number.isNaN(h)) return "高低差は数字で入れてください（下がりは −）";
+  return "";
+}
+$("plAdd").onclick = () => {
+  const r = plRead(), e = plValid(r);
+  if (e) { $("plMsg").textContent = e; return; }
+  if (r.dh === "") r.dh = "0";
+  const p = plProj(); p.st = r.st; p.rows.push(r); plChanged(); plResetForm(); $("p_dist").focus();
+};
+$("plUpdate").onclick = () => {
+  const r = plRead(), e = plValid(r);
+  if (e) { $("plMsg").textContent = e; return; }
+  if (r.dh === "") r.dh = "0";
+  plProj().rows[plEditing] = r; plChanged(); plResetForm();
+};
+$("plDel").onclick = () => {
+  if (!confirm("この区間を消しますか？")) return;
+  plProj().rows.splice(plEditing, 1); plChanged(); plResetForm();
+};
+$("plCancel").onclick = () => { plResetForm(); plRenderList(); };
+function plPickSide(sd) {      // 直している間は その行の側だけ変える
+  if (plEditing >= 0) { $("sideL").className = sd === "左" ? "on" : ""; $("sideR").className = sd === "右" ? "on" : ""; plPreview(); }
+  else plSetSide(sd);
+}
+$("sideL").onclick = () => plPickSide("左");
+$("sideR").onclick = () => plPickSide("右");
+$("plSign").onclick = () => {
+  const v = $("p_dh").value.trim();
+  $("p_dh").value = v.startsWith("-") ? v.slice(1) : "-" + v;
+  $("p_dh").focus(); plPreview();
+};
+$("p_st").addEventListener("change", () => {
+  const p = plProj(), st = $("p_st").value.trim();
+  if (!st || plEditing >= 0) return;
+  if (st !== p.st) p.side = "左";
+  p.st = st; $("p_cl").value = p.cl[st] ?? ""; plPersist(); plSetSide(p.side);
+});
+$("p_cl").addEventListener("change", () => {
+  const p = plProj(), st = $("p_st").value.trim(), v = $("p_cl").value.trim();
+  if (!st) return;
+  if (v === "") delete p.cl[st]; else p.cl[st] = v;
+  plChanged(); plPreview();
+});
+$("plNextSt").onclick = () => {
+  const p = plProj(), m = (p.st || "").match(/^(.*?)(\d+)$/);
+  const n = prompt("次の測点", m ? m[1] + (Number(m[2]) + 1) : "No." + (p.rows.length ? 1 : 0));
+  if (!n) return;
+  p.st = n.trim(); p.side = "左"; plPersist(); plResetForm(); $("p_cl").focus();
+};
+["p_dist", "p_dh", "p_memo"].forEach((id, i, a) => {
+  $(id).addEventListener("input", plPreview);
+  $(id).addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (i < a.length - 1) $(a[i + 1]).focus();
+    else (plEditing < 0 ? $("plAdd") : $("plUpdate")).click();
+  });
+});
+
+function plAddProject(name) {
+  name = (name || "").trim().replace(/[\\/:*?"<>|]/g, "_");
+  if (!name) return;
+  if (pl.projects[name]) { alert("同じ名前の案件があります。"); return; }
+  pl.projects[name] = plNew(); pl.current = name; plPersist(); plRender();
+}
+$("plNew").onclick = () => plAddProject(prompt("案件名（PCのアプリと同じ名前にすると分かりやすいです）"));
+$("plProj").onchange = () => { pl.current = $("plProj").value; plPersist(); plRender(); };
+$("plRename").onclick = () => {
+  const n = prompt("新しい案件名", pl.current);
+  if (!n || n === pl.current || pl.projects[n]) return;
+  pl.projects[n] = plProj(); delete pl.projects[pl.current]; pl.current = n; plPersist(); plRender();
+};
+$("plDeleteProj").onclick = () => {
+  const p = plProj();
+  if (p.dirty && p.rows.length && !confirm("Box に保存していない入力があります。それでも消しますか？")) return;
+  if (!confirm(`案件「${pl.current}」をこのスマホから消しますか？`)) return;
+  delete pl.projects[pl.current];
+  pl.current = Object.keys(pl.projects)[0] || "";
+  if (!pl.current) plAddProject("案件1"); else { plPersist(); plRender(); }
+};
+
+// 野帳 Excel（PC の「ポール横断」で読み込める形。CL からの距離・地盤高は計算式つき）
+function plToXlsx() {
+  const p = plProj(), calc = plCalc(p.rows, p), { sts, idx } = plOrder(p);
+  const rows = {};
+  const put = (ref, xml) => { const r = Number(ref.replace(/[A-Z]/g, "")); (rows[r] = rows[r] || []).push(xml); };
+  const str = (ref, v, s) => put(ref, `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${xe(v)}</t></is></c>`);
+  const val = (ref, v, s) => {
+    const n = num(v);
+    if (v === "" || v === undefined || v === null) put(ref, `<c r="${ref}" s="${s}"/>`);
+    else if (n !== null && !Number.isNaN(n)) put(ref, `<c r="${ref}" s="${s}"><v>${n}</v></c>`);
+    else str(ref, v, s);
+  };
+  const fml = (ref, f, v, s) => put(ref, `<c r="${ref}" s="${s}"${v == null ? ' t="str"' : ""}><f>${xe(f)}</f>${v == null ? "<v></v>" : `<v>${v}</v>`}</c>`);
+  str("A1", "ポール横断野帳", 4);
+  str("A2", `${pl.current}　黄色のセルを入力すると CL からの距離・地盤高 が計算されます（各測点の CL の行に CL 地盤高）`, 5);
+  ["測点", "側", "距離", "高低差", "CLから距離", "地盤高", "メモ"].forEach((h, j) => str(`${"ABCDEFG"[j]}4`, h, 1));
+  let r = 5;
+  sts.forEach((st) => {
+    const clRow = r, z0 = plClz(p, st);
+    str(`A${r}`, st, 7); str(`B${r}`, "CL", 7); val(`C${r}`, "", 7); val(`D${r}`, "", 7);
+    val(`E${r}`, 0, 9); val(`F${r}`, z0 ?? "", 10); val(`G${r}`, "", 2);
+    r++;
+    ["左", "右"].forEach((sd) => {
+      let prev = clRow;
+      idx.filter((i) => p.rows[i].st === st && p.rows[i].side === sd).forEach((i) => {
+        const d = p.rows[i], c = calc[i] || {};
+        str(`A${r}`, st, 7); str(`B${r}`, sd, 7);
+        val(`C${r}`, d.dist, 10); val(`D${r}`, d.dh, 10);
+        fml(`E${r}`, `IF(C${r}="","",E${prev}+C${r})`, c.s ?? null, 9);
+        fml(`F${r}`, `IF(OR(C${r}="",F${prev}=""),"",F${prev}+N(D${r}))`, z0 === null ? null : c.z ?? null, 9);
+        val(`G${r}`, d.memo ?? "", 2);
+        prev = r; r++;
+      });
+    });
+  });
+  const widths = [10, 6, 9, 9, 11, 10, 22];
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${
+    widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols><sheetData>${
+    Object.keys(rows).map(Number).sort((a, b) => a - b).map((n) => `<row r="${n}">${rows[n].join("")}</row>`).join("")
+  }</sheetData></worksheet>`;
+  return zip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="ポール横断野帳" sheetId="1" r:id="rId1"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["xl/styles.xml", STYLES],
+    ["xl/worksheets/sheet1.xml", sheet],
+  ]);
+}
+$("plSave").onclick = async () => {
+  const p = plProj();
+  if (!p.rows.length) { alert("まだ区間がありません。"); return; }
+  const fname = `${pl.current}_ポール横断.xlsx`;
+  const file = new File([plToXlsx()], fname, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  let done = false;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: fname }); done = true; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  if (!done) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file); a.download = fname; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  if (confirm("Box の「sokuryo_jw › 野帳」フォルダに保存できましたか？")) {
+    const t = new Date();
+    p.dirty = false; p.savedAt = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}`;
+    plPersist(); plRenderState();
+  }
+};
+if (!pl.current || !pl.projects[pl.current]) {
+  const first = Object.keys(pl.projects)[0];
+  if (first) pl.current = first;
+  else { pl.projects["案件1"] = plNew(); pl.current = "案件1"; }
+  plPersist();
+}
+
+// ================================================================ 光波／レベル／ポール横断の選択
 function showMode(m) {
   $("home").hidden = !!m;
   $("tsMain").hidden = m !== "ts";
   $("lvMain").hidden = m !== "lv";
+  $("plMain").hidden = m !== "pl";
   $("modeBtn").hidden = !m;
-  $("title").textContent = m === "ts" ? "📡 光波の野帳" : m === "lv" ? "📏 レベルの野帳" : "📐 野帳入力";
+  $("title").textContent = m === "ts" ? "📡 光波の野帳" : m === "lv" ? "📏 レベルの野帳" : m === "pl" ? "📐 ポール横断" : "📐 野帳入力";
   if (m) { try { localStorage.setItem("sokuryo_mode", m); } catch (e) {} }
   if (m === "ts") render();
   if (m === "lv") lvRender();
+  if (m === "pl") plRender();
   const last = (() => { try { return localStorage.getItem("sokuryo_mode"); } catch (e) { return null; } })();
   $("goTs").classList.toggle("last", last === "ts");
   $("goLv").classList.toggle("last", last === "lv");
+  $("goPl").classList.toggle("last", last === "pl");
   window.scrollTo(0, 0);
 }
 $("goTs").onclick = () => showMode("ts");
 $("goLv").onclick = () => showMode("lv");
+$("goPl").onclick = () => showMode("pl");
 $("modeBtn").onclick = () => showMode("");
 showMode("");
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
